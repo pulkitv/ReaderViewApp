@@ -1,10 +1,15 @@
+//
+//  ReaderViewAppApp.swift
+//  ReaderViewApp
+//
+//  Created by Pulkit Vashishta on 22/01/26.
+//
+
 import SwiftUI
 
 @main
-struct ReaderViewApp: App {
+struct ReaderViewAppApp: App {
     @StateObject private var articleStore = ArticleStore()
-    @State private var isLoadingFromShare = false
-    @Environment(\.scenePhase) private var scenePhase
     
     var body: some Scene {
         WindowGroup {
@@ -13,23 +18,6 @@ struct ReaderViewApp: App {
                 .onOpenURL { url in
                     handleIncomingURL(url)
                 }
-        }
-        .onChange(of: scenePhase) {
-            handleScenePhaseChange()
-        }
-    }
-    
-    private func handleScenePhaseChange() {
-        switch scenePhase {
-        case .background:
-            print("📱 App entered background - cleaning up extractions")
-            ArticleExtractionContext.shared.cleanup()
-        case .active:
-            print("📱 App became active")
-        case .inactive:
-            print("📱 App became inactive")
-        @unknown default:
-            break
         }
     }
     
@@ -49,7 +37,6 @@ struct ReaderViewApp: App {
         
         print("✅ Extracting article from: \(articleURL.absoluteString)")
         
-        // Note: Loading state is managed in ContentView via onChange
         ArticleExtractor.shared.extractArticle(from: articleURL) { result in
             DispatchQueue.main.async {
                 switch result {

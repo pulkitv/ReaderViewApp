@@ -3,7 +3,6 @@ import SwiftUI
 @main
 struct ReaderViewApp: App {
     @StateObject private var articleStore = ArticleStore()
-    @State private var isLoadingFromShare = false
     @Environment(\.scenePhase) private var scenePhase
     
     var body: some Scene {
