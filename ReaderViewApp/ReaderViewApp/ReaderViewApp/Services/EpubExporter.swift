@@ -1,4 +1,6 @@
 import Foundation
+import UIKit
+import WebKit
 import ZIPFoundation
 
 /// Builds a minimal EPUB for a single article with images saved as separate files.
@@ -92,19 +94,19 @@ final class EpubExporter {
             do {
                 var request = URLRequest(url: url)
                 request.timeoutInterval = fetchTimeout
-                let (data, response) = try await session.data(for: request)
-                if data.count > maxImageBytes { continue }
-                let mime = response.mimeType ?? mimeType(for: url)
-                guard let mime, mime.hasPrefix("image/") else { continue }
-                
-                // Determine file extension
-                let ext = self.fileExtension(for: mime)
+                let (rawData, response) = try await session.data(for: request)
+                if rawData.count > maxImageBytes { continue }
+                let detectedMime = response.mimeType ?? mimeType(for: url)
+                guard let detectedMime, detectedMime.hasPrefix("image/") else { continue }
+
+                // Transcode formats that Apple Books may not render (e.g., WebP, SVG)
+                let (data, finalMime, ext) = try await transcodeIfNeeded(data: rawData, mimeType: detectedMime)
                 let filename = "image\(imageCounter).\(ext)"
                 imageCounter += 1
-                
+
                 // Store image resource
-                images.append(ImageResource(filename: filename, data: data, mimeType: mime))
-                
+                images.append(ImageResource(filename: filename, data: data, mimeType: finalMime))
+
                 // Replace src with local path
                 let localPath = "images/\(filename)"
                 if let replaceRange = Range(match.range(at: 1), in: result) {
@@ -117,6 +119,80 @@ final class EpubExporter {
         // Remove responsive/loading attributes that may interfere with local paths in EPUB
         result = stripResponsiveImgAttributes(result)
         return result
+    }
+
+    private func transcodeIfNeeded(data: Data, mimeType: String) async throws -> (Data, String, String) {
+        // Returns: (data, mime, fileExtension)
+        switch mimeType {
+        case "image/webp":
+            // Attempt to decode using UIImage (supported on modern iOS)
+            if let image = UIImage(data: data) {
+                if let jpeg = image.jpegData(compressionQuality: 0.9) {
+                    return (jpeg, "image/jpeg", "jpg")
+                }
+                if let png = image.pngData() {
+                    return (png, "image/png", "png")
+                }
+            }
+            // Fallback to original
+            return (data, mimeType, fileExtension(for: mimeType))
+        case "image/svg+xml":
+            // Rasterize SVG to PNG via WKWebView snapshot
+            if let png = try await rasterizeSVGToPNG(svgData: data) {
+                return (png, "image/png", "png")
+            }
+            return (data, mimeType, fileExtension(for: mimeType))
+        default:
+            return (data, mimeType, fileExtension(for: mimeType))
+        }
+    }
+
+    private func rasterizeSVGToPNG(svgData: Data) async throws -> Data? {
+        let base64 = svgData.base64EncodedString()
+        let html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+        <style>
+        html, body { margin:0; padding:0; }
+        img { display:block; max-width:100%; height:auto; }
+        </style>
+        </head>
+        <body>
+        <img id=\"svg\" src=\"data:image/svg+xml;base64,
+        """ + base64 + """
+        \" />
+        </body>
+        </html>
+        """
+
+        return try await MainActor.run { () -> Data? in
+            let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1024, height: 768))
+            let semaphore = DispatchSemaphore(value: 0)
+            var pngData: Data?
+            webView.navigationDelegate = SimpleNavDelegate {
+                let config = WKSnapshotConfiguration()
+                config.rect = CGRect(x: 0, y: 0, width: 1024, height: 768)
+                webView.takeSnapshot(with: config) { image, _ in
+                    if let img = image, let data = img.pngData() {
+                        pngData = data
+                    }
+                    semaphore.signal()
+                }
+            }
+            webView.loadHTMLString(html, baseURL: nil)
+            _ = semaphore.wait(timeout: .now() + 5)
+            return pngData
+        }
+    }
+
+    private class SimpleNavDelegate: NSObject, WKNavigationDelegate {
+        let onFinish: () -> Void
+        init(onFinish: @escaping () -> Void) { self.onFinish = onFinish }
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            onFinish()
+        }
     }
 
     private func stripResponsiveImgAttributes(_ html: String) -> String {
