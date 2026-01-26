@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		DC713ABA2F22A3310068CF14 /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = DC713AB02F22A3310068CF14 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		DCC0E0A32F6F000100000001 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = DCC0E0A22F6F000100000001 /* ZIPFoundation */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -88,6 +89,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DCC0E0A32F6F000100000001 /* ZIPFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -133,6 +135,7 @@
 			);
 			name = ReaderViewApp;
 			packageProductDependencies = (
+				DCC0E0A22F6F000100000001 /* ZIPFoundation */,
 			);
 			productName = ReaderViewApp;
 			productReference = DC713ABB2F22A3310068CF14 /* ReaderViewApp.app */;
@@ -189,6 +192,9 @@
 			);
 			mainGroup = DC713A6E2F229D520068CF14;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				DCC0E0A12F6F000100000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = DC713A6E2F229D520068CF14;
 			projectDirPath = "";
@@ -539,6 +545,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		DCC0E0A12F6F000100000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/weichsel/ZIPFoundation.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		DCC0E0A22F6F000100000001 /* ZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DCC0E0A12F6F000100000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ZIPFoundation;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = DC713A6F2F229D520068CF14 /* Project object */;
 }

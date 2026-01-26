@@ -6,6 +6,11 @@ struct ReaderView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var articleStore: ArticleStore
     @State private var contentHeight: CGFloat = 500
+    @State private var isExportingEPUB = false
+    @State private var epubURL: URL?
+    @State private var showEPUBShareSheet = false
+    @State private var exportError: String?
+    private let epubExporter = EpubExporter()
     
     var estimatedReadingTime: Int {
         article.length / 200
@@ -48,7 +53,7 @@ struct ReaderView: View {
                 Divider()
                 
                 // Article content using WKWebView for HTML rendering
-                ArticleContentView(htmlContent: article.content, contentHeight: $contentHeight)
+                ArticleContentView(htmlContent: article.content, baseURL: URL(string: article.url), contentHeight: $contentHeight)
                     .frame(height: contentHeight)
             }
             .padding()
@@ -70,6 +75,12 @@ struct ReaderView: View {
                     }) {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
+
+                    Button(action: {
+                        exportEPUB()
+                    }) {
+                        Label("Export EPUB", systemImage: "book")
+                    }
                     
                     Button(action: {
                         articleStore.saveArticle(article)
@@ -80,6 +91,34 @@ struct ReaderView: View {
                     Image(systemName: "ellipsis.circle")
                 }
             }
+        }
+        .overlay(alignment: .center) {
+            if isExportingEPUB {
+                VStack(spacing: 12) {
+                    ProgressView("Preparing EPUB…")
+                    Text("This may take a moment for image-heavy articles.")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+                .padding(16)
+                .background(.regularMaterial)
+                .cornerRadius(12)
+            }
+        }
+        .sheet(isPresented: $showEPUBShareSheet, onDismiss: {
+            if let epubURL {
+                try? FileManager.default.removeItem(at: epubURL)
+            }
+            epubURL = nil
+        }) {
+            if let epubURL {
+                ActivityView(activityItems: [epubURL])
+            }
+        }
+        .alert("EPUB export failed", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
+            Button("OK", role: .cancel) { exportError = nil }
+        } message: {
+            Text(exportError ?? "Unknown error")
         }
     }
     
@@ -93,16 +132,52 @@ struct ReaderView: View {
             rootViewController.present(activityVC, animated: true)
         }
     }
+
+    private func exportEPUB() {
+        guard !isExportingEPUB else { return }
+        isExportingEPUB = true
+        epubURL = nil
+        exportError = nil
+        Task {
+            do {
+                let url = try await epubExporter.export(article: article)
+                await MainActor.run {
+                    epubURL = url
+                    isExportingEPUB = false
+                    showEPUBShareSheet = true
+                }
+            } catch {
+                await MainActor.run {
+                    isExportingEPUB = false
+                    exportError = error.localizedDescription
+                }
+            }
+        }
+    }
 }
 
 struct ArticleContentView: UIViewRepresentable {
     let htmlContent: String
+    let baseURL: URL?
     @Binding var contentHeight: CGFloat
     
     func makeUIView(context: Context) -> WKWebView {
-        let webView = WKWebView()
+        let configuration = WKWebViewConfiguration()
+        configuration.allowsInlineMediaPlayback = true
+        
+        // Enable preferences for loading remote content
+        let preferences = WKWebpagePreferences()
+        preferences.allowsContentJavaScript = true
+        configuration.defaultWebpagePreferences = preferences
+        
+        // Enable media types
+        configuration.mediaTypesRequiringUserActionForPlayback = []
+        
+        let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.scrollView.isScrollEnabled = false
         webView.navigationDelegate = context.coordinator
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
         
         // Store weak reference for cleanup
         context.coordinator.webView = webView
@@ -297,7 +372,9 @@ struct ArticleContentView: UIViewRepresentable {
         </html>
         """
         
-        webView.loadHTMLString(styledHTML, baseURL: nil)
+        if let data = styledHTML.data(using: .utf8) {
+            webView.load(data, mimeType: "text/html", characterEncodingName: "utf-8", baseURL: baseURL ?? URL(string: "about:blank")!)
+        }
     }
     
     func makeCoordinator() -> Coordinator {
@@ -334,5 +411,18 @@ struct ArticleContentView: UIViewRepresentable {
             // Clean up observer
             webView?.scrollView.removeObserver(self, forKeyPath: "contentSize")
         }
+    }
+}
+
+struct ActivityView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    let applicationActivities: [UIActivity]? = nil
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: applicationActivities)
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
+        // No-op
     }
 }

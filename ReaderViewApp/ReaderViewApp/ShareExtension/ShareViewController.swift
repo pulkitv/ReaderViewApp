@@ -4,6 +4,8 @@ import MobileCoreServices
 import UniformTypeIdentifiers
 
 class ShareViewController: UIViewController {
+    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         handleSharedURL()
@@ -61,29 +63,29 @@ class ShareViewController: UIViewController {
             return
         }
 
-        print("🔗 ShareExtension: Attempting to open app with URL")
-
-        // Try to open using UIApplication through responder chain
-        var responder: UIResponder? = self
-        var foundApplication = false
+        print("🔗 ShareExtension: Attempting to open app")
         
+        // Try to find and use UIApplication to open the app
+        var responder: UIResponder? = self
         while responder != nil {
             if let application = responder as? UIApplication {
-                print("✅ ShareExtension: Found UIApplication, opening...")
-                foundApplication = true
+                print("✅ ShareExtension: Found UIApplication, opening app...")
+                // Open the app and complete in the handler
                 application.open(appURL, options: [:]) { [weak self] success in
                     print("✅ ShareExtension: Open result: \(success)")
-                    self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+                    // Complete the extension after opening the app
+                    DispatchQueue.main.async {
+                        self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+                    }
                 }
                 return
             }
             responder = responder?.next
         }
         
-        if !foundApplication {
-            print("⚠️ ShareExtension: UIApplication not found, using selector")
-            openURLViaSelector(appURL)
-        }
+        // Fallback: complete the request immediately
+        print("⚠️ ShareExtension: Could not find UIApplication")
+        extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
     }
     
     private func openURLViaSelector(_ url: URL) {
